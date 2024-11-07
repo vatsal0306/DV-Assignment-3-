@@ -4,68 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Force Layout Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        /* Tooltip styling */
         .tooltip {
             position: absolute;
             background-color: #fff;
             padding: 5px;
             border: 1px solid #ccc;
             pointer-events: none;
+            font-size: 12px;
+            color: #333;
+            opacity: 0;
+            transition: opacity 0.2s;
         }
+
+        /* SVG styling */
         svg {
             border: 1px solid #ddd;
+            display: block;
+            margin: auto;
         }
     </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
     <div id="visualization"></div>
-    <div class="tooltip" style="opacity: 0;"></div>
+    <div class="tooltip"></div>
 
-    <script type="text/javascript">
+    <script>
         const width = 800;
         const height = 600;
 
-        // Load data
-        d3.csv("/data/data_scopus.csv").then(data => {
-            // Step 1: Data preparation
+        // Load CSV data
+        d3.csv("data_scopus.csv").then(data => {
+            // Data preparation
             let nodes = [];
             let links = [];
             let countryCounts = {};
 
-            // Process data
+            // Process data to create nodes and links
             data.forEach(d => {
                 const author = d.Author;
                 const affiliation = d.Affiliation;
                 const country = d.Country;
 
                 if (author && affiliation && country) {
-                    // Track affiliation country frequency
+                    // Track country occurrence
                     countryCounts[country] = (countryCounts[country] || 0) + 1;
 
-                    // Create node if it doesn't exist
+                    // Add unique nodes for authors
                     if (!nodes.some(node => node.id === author)) {
                         nodes.push({ id: author, country: country, affiliation: affiliation });
                     }
 
-                    // Create link if authors share a publication (simplified for example)
-                    // Note: Additional logic may be needed to connect authors with shared publications
+                    // Link authors to affiliations
                     links.push({ source: author, target: affiliation });
                 }
             });
 
-            // Top 10 countries by count
+            // Identify top 10 countries
             const topCountries = Object.keys(countryCounts)
                 .sort((a, b) => countryCounts[b] - countryCounts[a])
                 .slice(0, 10);
 
-            // Color scale for top countries, gray for others
+            // Color scale
             const color = d3.scaleOrdinal()
                 .domain(topCountries)
                 .range(d3.schemeCategory10)
                 .unknown("#A9A9A9");
 
-            // Step 4: Force layout visualization
+            // Force layout visualization setup
             const svg = d3.select("#visualization")
                 .append("svg")
                 .attr("width", width)
@@ -80,14 +88,14 @@
             // Tooltip setup
             const tooltip = d3.select(".tooltip");
 
-            // Add links
+            // Links in SVG
             const link = svg.append("g")
                 .attr("stroke", "#aaa")
                 .selectAll("line")
                 .data(links)
                 .enter().append("line");
 
-            // Add nodes
+            // Nodes in SVG
             const node = svg.append("g")
                 .attr("stroke", "#fff")
                 .attr("stroke-width", 1.5)
@@ -97,10 +105,8 @@
                 .attr("r", d => Math.sqrt(d.count || 1) * 5)
                 .attr("fill", d => color(d.country))
                 .on("mouseover", (event, d) => {
-                    // Show tooltip
                     tooltip.style("opacity", 1)
                         .html(`Author: ${d.id}<br>Affiliation: ${d.affiliation}`);
-                    // Highlight same affiliation nodes
                     node.style("opacity", n => n.affiliation === d.affiliation ? 1 : 0.2);
                     link.style("opacity", l => l.source.affiliation === d.affiliation && l.target.affiliation === d.affiliation ? 1 : 0.2);
                 })
@@ -118,6 +124,7 @@
                            .html(`Author: ${d.id}<br>Affiliation: ${d.affiliation}<br>Country: ${d.country}`);
                 });
 
+            // Update positions during simulation
             simulation.on("tick", () => {
                 link
                     .attr("x1", d => d.source.x)
@@ -129,6 +136,8 @@
                     .attr("cx", d => d.x)
                     .attr("cy", d => d.y);
             });
+        }).catch(error => {
+            console.error("Error loading the CSV file:", error);
         });
     </script>
 </body>
