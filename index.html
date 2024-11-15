@@ -1,126 +1,140 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Author Network Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        .node {
-            stroke: #fff;
-            stroke-width: 1.5px;
-        }
-        .link {
-            stroke: #999;
-            stroke-opacity: 0.6;
-        }
-        .tooltip {
-            position: absolute;
-            background-color: white;
-            border: 1px solid #ddd;
-            padding: 5px;
-            font-size: 12px;
-            pointer-events: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Author Network Visualization</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* Basic styling */
+    body {
+      font-family: Arial, sans-serif;
+    }
+    svg {
+      border: 1px solid #ccc;
+    }
+    .tooltip {
+      position: absolute;
+      background-color: white;
+      padding: 5px;
+      border: 1px solid #333;
+      border-radius: 3px;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .node {
+      stroke: #fff;
+      stroke-width: 1.5px;
+    }
+    .node.dimmed {
+      opacity: 0.2;
+    }
+  </style>
 </head>
 <body>
-    <div id="controls">
-        <label for="charge">Charge Strength: </label>
-        <input type="range" id="charge" min="-100" max="100" value="-30">
-        <label for="collide">Collision Radius: </label>
-        <input type="range" id="collide" min="0" max="20" value="12">
-        <label for="linkStrength">Link Strength: </label>
-        <input type="range" id="linkStrength" min="0" max="2" step="0.1" value="1">
-    </div>
+  <h2>Author Network Visualization</h2>
+  <div id="controls">
+    <label>Charge Strength: <input type="range" id="chargeStrength" min="-100" max="0" value="-30"></label>
+    <label>Collision Radius: <input type="range" id="collideRadius" min="1" max="30" value="15"></label>
+    <label>Link Strength: <input type="range" id="linkStrength" min="0" max="1" step="0.1" value="0.7"></label>
+  </div>
+  <svg width="800" height="600"></svg>
+  <div class="tooltip" id="tooltip"></div>
 
-    <div id="tooltip" class="tooltip" style="display: none;"></div>
-    <svg width="960" height="600"></svg>
+  <script>
+    // Load the data
+    const width = 800, height = 600;
+    const colorScale = d3.scaleOrdinal()
+      .domain(["Country1", "Country2", "Country3", "Country4", "Country5", "Country6", "Country7", "Country8", "Country9", "Country10", "Other"])
+      .range(["#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#b15928", "#a6cee3", "#b2df8a", "#fb9a99", "#fdbf6f", "#A9A9A9"]);
 
-    <script>
-        // Load data (replace 'data.json' with your actual data source)
-        d3.json('data.json').then(function(data) {
-            const width = 960;
-            const height = 600;
-            const svg = d3.select("svg");
+    const svg = d3.select("svg");
+    const tooltip = d3.select("#tooltip");
 
-            // Tooltip setup
-            const tooltip = d3.select("#tooltip");
+    d3.json("path_to_your_data.json").then(data => {
+      // Setup force simulation
+      const simulation = d3.forceSimulation(data.nodes)
+        .force("link", d3.forceLink(data.links).id(d => d.id).strength(0.7))
+        .force("charge", d3.forceManyBody().strength(-30))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collide", d3.forceCollide().radius(d => d.degree * 0.5 + 5));
 
-            // Define color scale for top 10 countries + others
-            const countries = Array.from(new Set(data.nodes.map(d => d.country))).slice(0, 10);
-            const color = d3.scaleOrdinal()
-                .domain(countries)
-                .range(d3.schemeCategory10)
-                .unknown("#A9A9A9");
+      const link = svg.append("g")
+        .selectAll("line")
+        .data(data.links)
+        .join("line")
+        .attr("stroke", "#999")
+        .attr("stroke-opacity", 0.6);
 
-            // Node sizing based on degree
-            const nodeSize = d3.scaleSqrt()
-                .domain(d3.extent(data.nodes, d => d.degree))
-                .range([3, 12]);
+      const node = svg.append("g")
+        .selectAll("circle")
+        .data(data.nodes)
+        .join("circle")
+        .attr("r", d => Math.sqrt(d.degree) * 1.5 + 3)
+        .attr("fill", d => colorScale(d.affiliationCountry))
+        .attr("class", "node")
+        .call(drag(simulation));
 
-            // Set up the simulation
-            const simulation = d3.forceSimulation(data.nodes)
-                .force("link", d3.forceLink(data.links).id(d => d.id).strength(1))
-                .force("charge", d3.forceManyBody().strength(-30))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collide", d3.forceCollide().radius(d => nodeSize(d.degree) + 2));
+      node.on("mouseover", (event, d) => {
+        node.classed("dimmed", node => node.affiliationCountry !== d.affiliationCountry);
+        tooltip.style("opacity", 1)
+               .html(`Author: ${d.name}<br>Affiliation: ${d.affiliationCountry}`);
+      })
+      .on("mousemove", (event) => {
+        tooltip.style("left", (event.pageX + 10) + "px")
+               .style("top", (event.pageY - 10) + "px");
+      })
+      .on("mouseleave", () => {
+        node.classed("dimmed", false);
+        tooltip.style("opacity", 0);
+      })
+      .on("click", (event, d) => {
+        alert(`Author: ${d.name}\nAffiliation: ${d.affiliationCountry}`);
+      });
 
-            // Draw links
-            const link = svg.append("g")
-                .attr("class", "links")
-                .selectAll("line")
-                .data(data.links)
-                .enter().append("line")
-                .attr("class", "link")
-                .style("stroke-width", 1);
+      simulation.on("tick", () => {
+        link.attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
 
-            // Draw nodes
-            const node = svg.append("g")
-                .attr("class", "nodes")
-                .selectAll("circle")
-                .data(data.nodes)
-                .enter().append("circle")
-                .attr("class", "node")
-                .attr("r", d => nodeSize(d.degree))
-                .attr("fill", d => color(d.country))
-                .on("mouseover", function(event, d) {
-                    node.style("opacity", o => o.country === d.country ? 1 : 0.2);
-                    link.style("opacity", 0.2);
-                    tooltip.style("display", "block")
-                        .html(`<strong>Author:</strong> ${d.name}<br><strong>Country:</strong> ${d.country}`)
-                        .style("left", `${event.pageX + 5}px`)
-                        .style("top", `${event.pageY + 5}px`);
-                })
-                .on("mousemove", function(event) {
-                    tooltip.style("left", `${event.pageX + 5}px`).style("top", `${event.pageY + 5}px`);
-                })
-                .on("mouseleave", function() {
-                    node.style("opacity", 1);
-                    link.style("opacity", 1);
-                    tooltip.style("display", "none");
-                });
+        node.attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+      });
 
-            simulation.on("tick", () => {
-                link.attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
+      // Control sliders
+      d3.select("#chargeStrength").on("input", function() {
+        simulation.force("charge").strength(+this.value);
+        simulation.alpha(1).restart();
+      });
+      d3.select("#collideRadius").on("input", function() {
+        simulation.force("collide").radius(+this.value);
+        simulation.alpha(1).restart();
+      });
+      d3.select("#linkStrength").on("input", function() {
+        simulation.force("link").strength(+this.value);
+        simulation.alpha(1).restart();
+      });
+    });
 
-                node.attr("cx", d => d.x)
-                    .attr("cy", d => d.y);
-            });
-
-            // UI controls
-            d3.select("#charge").on("input", function() {
-                simulation.force("charge").strength(-this.value).restart();
-            });
-            d3.select("#collide").on("input", function() {
-                simulation.force("collide").radius(+this.value).restart();
-            });
-            d3.select("#linkStrength").on("input", function() {
-                simulation.force("link").strength(+this.value).restart();
-            });
+    // Dragging behavior
+    function drag(simulation) {
+      return d3.drag()
+        .on("start", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        })
+        .on("drag", (event, d) => {
+          d.fx = event.x;
+          d.fy = event.y;
+        })
+        .on("end", (event, d) => {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
         });
-    </script>
+    }
+  </script>
 </body>
 </html>
