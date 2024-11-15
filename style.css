@@ -1,0 +1,20 @@
+/* style.css */
+.tooltip {
+    position: absolute;
+    background-color: #fff;
+    padding: 5px;
+    border: 1px solid #ccc;
+    pointer-events: none;
+    font-size: 12px;
+    color: #333;
+}
+
+svg {
+    border: 1px solid #ddd;
+}
+
+#visualization {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
