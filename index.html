@@ -2,142 +2,124 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Force Layout Visualization</title>
+    <title>Author Network Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        /* Tooltip styling */
+        .node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
         .tooltip {
             position: absolute;
-            background-color: #fff;
-            padding: 5px;
-            border: 1px solid #ccc;
-            pointer-events: none;
-            font-size: 12px;
-            color: #333;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        /* SVG styling */
-        svg {
+            background-color: white;
             border: 1px solid #ddd;
-            display: block;
-            margin: auto;
+            padding: 5px;
+            font-size: 12px;
+            pointer-events: none;
         }
     </style>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
-    <div id="visualization"></div>
-    <div class="tooltip"></div>
+    <div id="controls">
+        <label for="charge">Charge Strength: </label>
+        <input type="range" id="charge" min="-100" max="100" value="-30">
+        <label for="collide">Collision Radius: </label>
+        <input type="range" id="collide" min="0" max="20" value="12">
+        <label for="linkStrength">Link Strength: </label>
+        <input type="range" id="linkStrength" min="0" max="2" step="0.1" value="1">
+    </div>
+
+    <div id="tooltip" class="tooltip" style="display: none;"></div>
+    <svg width="960" height="600"></svg>
 
     <script>
-        const width = 800;
-        const height = 600;
+        // Load data (replace 'data.json' with your actual data source)
+        d3.json('data.json').then(function(data) {
+            const width = 960;
+            const height = 600;
+            const svg = d3.select("svg");
 
-        // Load CSV data
-        d3.csv("data_scopus.csv").then(data => {
-            // Data preparation
-            let nodes = [];
-            let links = [];
-            let countryCounts = {};
+            // Tooltip setup
+            const tooltip = d3.select("#tooltip");
 
-            // Process data to create nodes and links
-            data.forEach(d => {
-                const author = d.Author;
-                const affiliation = d.Affiliation;
-                const country = d.Country;
-
-                if (author && affiliation && country) {
-                    // Track country occurrence
-                    countryCounts[country] = (countryCounts[country] || 0) + 1;
-
-                    // Add unique nodes for authors
-                    if (!nodes.some(node => node.id === author)) {
-                        nodes.push({ id: author, country: country, affiliation: affiliation });
-                    }
-
-                    // Link authors to affiliations
-                    links.push({ source: author, target: affiliation });
-                }
-            });
-
-            // Identify top 10 countries
-            const topCountries = Object.keys(countryCounts)
-                .sort((a, b) => countryCounts[b] - countryCounts[a])
-                .slice(0, 10);
-
-            // Color scale
+            // Define color scale for top 10 countries + others
+            const countries = Array.from(new Set(data.nodes.map(d => d.country))).slice(0, 10);
             const color = d3.scaleOrdinal()
-                .domain(topCountries)
+                .domain(countries)
                 .range(d3.schemeCategory10)
                 .unknown("#A9A9A9");
 
-            // Force layout visualization setup
-            const svg = d3.select("#visualization")
-                .append("svg")
-                .attr("width", width)
-                .attr("height", height);
+            // Node sizing based on degree
+            const nodeSize = d3.scaleSqrt()
+                .domain(d3.extent(data.nodes, d => d.degree))
+                .range([3, 12]);
 
-            const simulation = d3.forceSimulation(nodes)
-                .force("link", d3.forceLink(links).id(d => d.id).strength(0.1))
-                .force("charge", d3.forceManyBody().strength(-50))
+            // Set up the simulation
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id).strength(1))
+                .force("charge", d3.forceManyBody().strength(-30))
                 .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collision", d3.forceCollide().radius(d => Math.sqrt(d.count || 1) * 5));
+                .force("collide", d3.forceCollide().radius(d => nodeSize(d.degree) + 2));
 
-            // Tooltip setup
-            const tooltip = d3.select(".tooltip");
-
-            // Links in SVG
+            // Draw links
             const link = svg.append("g")
-                .attr("stroke", "#aaa")
+                .attr("class", "links")
                 .selectAll("line")
-                .data(links)
-                .enter().append("line");
+                .data(data.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .style("stroke-width", 1);
 
-            // Nodes in SVG
+            // Draw nodes
             const node = svg.append("g")
-                .attr("stroke", "#fff")
-                .attr("stroke-width", 1.5)
+                .attr("class", "nodes")
                 .selectAll("circle")
-                .data(nodes)
+                .data(data.nodes)
                 .enter().append("circle")
-                .attr("r", d => Math.sqrt(d.count || 1) * 5)
+                .attr("class", "node")
+                .attr("r", d => nodeSize(d.degree))
                 .attr("fill", d => color(d.country))
-                .on("mouseover", (event, d) => {
-                    tooltip.style("opacity", 1)
-                        .html(`Author: ${d.id}<br>Affiliation: ${d.affiliation}`);
-                    node.style("opacity", n => n.affiliation === d.affiliation ? 1 : 0.2);
-                    link.style("opacity", l => l.source.affiliation === d.affiliation && l.target.affiliation === d.affiliation ? 1 : 0.2);
+                .on("mouseover", function(event, d) {
+                    node.style("opacity", o => o.country === d.country ? 1 : 0.2);
+                    link.style("opacity", 0.2);
+                    tooltip.style("display", "block")
+                        .html(`<strong>Author:</strong> ${d.name}<br><strong>Country:</strong> ${d.country}`)
+                        .style("left", `${event.pageX + 5}px`)
+                        .style("top", `${event.pageY + 5}px`);
                 })
-                .on("mouseleave", () => {
-                    tooltip.style("opacity", 0);
+                .on("mousemove", function(event) {
+                    tooltip.style("left", `${event.pageX + 5}px`).style("top", `${event.pageY + 5}px`);
+                })
+                .on("mouseleave", function() {
                     node.style("opacity", 1);
                     link.style("opacity", 1);
-                })
-                .on("mousemove", (event) => {
-                    tooltip.style("left", (event.pageX + 5) + "px")
-                           .style("top", (event.pageY - 5) + "px");
-                })
-                .on("click", (event, d) => {
-                    tooltip.style("opacity", 1)
-                           .html(`Author: ${d.id}<br>Affiliation: ${d.affiliation}<br>Country: ${d.country}`);
+                    tooltip.style("display", "none");
                 });
 
-            // Update positions during simulation
             simulation.on("tick", () => {
-                link
-                    .attr("x1", d => d.source.x)
+                link.attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)
                     .attr("x2", d => d.target.x)
                     .attr("y2", d => d.target.y);
 
-                node
-                    .attr("cx", d => d.x)
+                node.attr("cx", d => d.x)
                     .attr("cy", d => d.y);
             });
-        }).catch(error => {
-            console.error("Error loading the CSV file:", error);
+
+            // UI controls
+            d3.select("#charge").on("input", function() {
+                simulation.force("charge").strength(-this.value).restart();
+            });
+            d3.select("#collide").on("input", function() {
+                simulation.force("collide").radius(+this.value).restart();
+            });
+            d3.select("#linkStrength").on("input", function() {
+                simulation.force("link").strength(+this.value).restart();
+            });
         });
     </script>
 </body>
